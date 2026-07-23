@@ -1,64 +1,167 @@
-import Image from "next/image";
+"use client";
+
+import { useCallback, useState } from "react";
+import WalletConnect from "@/components/WalletConnect";
+import BalanceCard from "@/components/BalanceCard";
+import SendForm from "@/components/SendForm";
+import TxResult, { TxResultData } from "@/components/TxResult";
+import TxHistory from "@/components/TxHistory";
+import { connectFreighter, signXdr } from "@/lib/freighter";
+import {
+  buildPaymentTransaction,
+  fundWithFriendbot,
+  getRecentTransactions,
+  getXlmBalance,
+  submitSignedTransaction,
+  type SimpleTransaction,
+} from "@/lib/stellar";
 
 export default function Home() {
+  const [address, setAddress] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const [balance, setBalance] = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [unfunded, setUnfunded] = useState(false);
+  const [funding, setFunding] = useState(false);
+
+  const [history, setHistory] = useState<SimpleTransaction[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [sending, setSending] = useState(false);
+  const [txResult, setTxResult] = useState<TxResultData | null>(null);
+
+  const refreshAccountData = useCallback(async (publicKey: string) => {
+    setBalanceLoading(true);
+    setHistoryLoading(true);
+    try {
+      const [bal, txs] = await Promise.all([
+        getXlmBalance(publicKey),
+        getRecentTransactions(publicKey),
+      ]);
+      setUnfunded(bal === null);
+      setBalance(bal);
+      setHistory(txs);
+    } finally {
+      setBalanceLoading(false);
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  async function handleConnect() {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const publicKey = await connectFreighter();
+      setAddress(publicKey);
+      await refreshAccountData(publicKey);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Failed to connect wallet.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  function handleDisconnect() {
+    setAddress(null);
+    setBalance(null);
+    setUnfunded(false);
+    setHistory([]);
+    setTxResult(null);
+    setConnectError(null);
+  }
+
+  async function handleFund() {
+    if (!address) return;
+    setFunding(true);
+    try {
+      await fundWithFriendbot(address);
+      await refreshAccountData(address);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Friendbot funding failed.");
+    } finally {
+      setFunding(false);
+    }
+  }
+
+  async function handleSend(destination: string, amount: string, memo: string) {
+    if (!address) return;
+    setSending(true);
+    setTxResult(null);
+    try {
+      const unsignedXdr = await buildPaymentTransaction({
+        sourcePublicKey: address,
+        destinationPublicKey: destination,
+        amount,
+        memo: memo || undefined,
+      });
+      const signedXdr = await signXdr(unsignedXdr, address);
+      const response = await submitSignedTransaction(signedXdr);
+
+      setTxResult({
+        status: "success",
+        message: `Sent ${amount} XLM to ${destination.slice(0, 4)}...${destination.slice(-4)}.`,
+        hash: response.hash,
+      });
+      await refreshAccountData(address);
+    } catch (err) {
+      setTxResult({
+        status: "error",
+        message: err instanceof Error ? err.message : "Transaction failed.",
+      });
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <div className="min-h-screen flex-1 bg-slate-950">
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-12">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">StellarPay</h1>
+            <p className="text-sm text-slate-400">Send XLM on Stellar Testnet</p>
+          </div>
+          <WalletConnect
+            address={address}
+            connecting={connecting}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+          />
+        </header>
+
+        {connectError && (
+          <div className="rounded-2xl border border-red-600/50 bg-red-950/40 p-4 text-sm text-red-300">
+            {connectError}
+          </div>
+        )}
+
+        {!address ? (
+          <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 p-10 text-center">
+            <p className="text-slate-300">Connect your Freighter wallet to get started.</p>
+            <p className="mt-2 text-sm text-slate-500">
+              Make sure the Freighter extension is installed and switched to Test Net.
+            </p>
+          </div>
+        ) : (
+          <>
+            <BalanceCard
+              balance={balance}
+              loading={balanceLoading}
+              unfunded={unfunded}
+              onRefresh={() => refreshAccountData(address)}
+              onFund={handleFund}
+              funding={funding}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+            <SendForm disabled={!address || unfunded} sending={sending} onSend={handleSend} />
+
+            <TxResult result={txResult} />
+
+            <TxHistory transactions={history} loading={historyLoading} />
+          </>
+        )}
       </main>
     </div>
   );
