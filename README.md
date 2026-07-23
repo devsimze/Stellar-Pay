@@ -32,7 +32,7 @@ Built for **Level 1 – White Belt** of the Stellar frontend challenge.
 1. Clone the repository and install dependencies:
 
    ```bash
-   git clone <this-repo-url>
+   git clone https://github.com/devsimze/StellarPay
    cd stellar-payment-dapp
    npm install
    ```
@@ -66,12 +66,15 @@ lib/stellar.ts         # Horizon Testnet queries + payment transaction building/
 
 ## Screenshots
 
-> Add screenshots here before submitting:
+**Wallet connected + balance displayed**
 
-- Wallet connected state: `docs/screenshot-connected.png`
-- Balance displayed: `docs/screenshot-balance.png`
-- Successful testnet transaction: `docs/screenshot-tx-success.png`
-- Transaction result shown to the user: `docs/screenshot-tx-result.png`
+![Wallet connected and balance displayed](docs/screenshot-connected-balance.png)
+
+**Successful testnet transaction + result shown to the user**
+
+![Transaction result shown to the user](docs/screenshot-tx-result.png)
+
+Live example transaction on Stellar Testnet: [8d50412c...9249d482](https://stellar.expert/explorer/testnet/tx/8d50412c29abcf15a7e048cfde4c8f5f30bb135ce20aee7237ab1fb89249d482)
 
 ## Notes
 
